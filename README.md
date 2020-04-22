@@ -2,7 +2,6 @@
 
 Flask file upload/export API with pause, resume and stop capability.
 Endpoints:
-  - /
   - /upload POST - For uploading a file
   - /export POST - For exporting rows through the given csv file
   - (upload or export)/pause GET - For pausing the upload/export of the file
