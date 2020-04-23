@@ -10,4 +10,4 @@ Endpoints:
   - (upload or export)/status GET - For getting the upload/export status of the file
 
 #### Running image :
-Build the docker image from here or from [DockerHub] (https://hub.docker.com/repository/docker/abhinavraj23/flask-upload-export-api) for testing.
+Build the docker image from here or from [DockerHub](https://hub.docker.com/repository/docker/abhinavraj23/flask-upload-export-api) for testing.
