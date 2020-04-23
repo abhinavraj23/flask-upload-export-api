@@ -3,6 +3,7 @@ import datetime
 import csv
 import time
 import enum
+import uuid
 
 from flask import Flask, request, redirect, jsonify
 from flask_restplus import Api, Resource, reqparse, abort, fields
@@ -22,7 +23,7 @@ class States(enum.Enum):
 
 ############################## FOR UPLOADING #########################################
 
-UPLOAD_STATE = States.READY
+UPLOAD_STATE = {}
 file_upload = reqparse.RequestParser()
 
 file_upload.add_argument("csv",
@@ -30,6 +31,11 @@ file_upload.add_argument("csv",
                         location='files',
                         required=True,
                         help="CSV File")
+
+file_upload.add_argument("token",
+                        type=str,
+                        required=True,
+                        help="Run a GET request to get a upload ticket")
 
 
 upload_thread = threading.Event()
@@ -40,7 +46,8 @@ class Upload(Resource):
     def post(self):
         args = file_upload.parse_args()
         global UPLOAD_STATE
-        if UPLOAD_STATE == States.IN_PROGRESS:
+        id = args["token"]
+        if UPLOAD_STATE[id] == States.IN_PROGRESS:
             resp = jsonify({'message': 'Wait for upload to complete'})
             resp.status_code = 400
             return resp
@@ -50,29 +57,32 @@ class Upload(Resource):
             filestream = args['csv'].stream
             upload_thread.set()
             flag = 1
-            UPLOAD_STATE = States.IN_PROGRESS
+            UPLOAD_STATE[id] = States.IN_PROGRESS
             print("Uplaoding file...")
             with open(filepath, 'wb') as newfile:
                 for line in filestream:
                     upload_thread.wait()
                     #ADDED MANUALLY FOR DEMO
                     time.sleep(0.5)
-                    if(UPLOAD_STATE == States.PAUSED):
-                        while(UPLOAD_STATE !=  States.IN_PROGRESS):
+                    if(UPLOAD_STATE[id] == States.PAUSED):
+                        while(UPLOAD_STATE[id] !=  States.IN_PROGRESS):
+                            if(UPLOAD_STATE[id] == States.STOPPED):
+                                break
                             pass
-                    if UPLOAD_STATE == States.STOPPED:
+                    if UPLOAD_STATE[id] == States.STOPPED:
+                        print("STOPPPPPPP")
                         flag = 0
                         break
                     print(line, sep='')
                     newfile.write(line)
             if flag == 0:
-                UPLOAD_STATE = States.STOPPED
+                UPLOAD_STATE[id] = States.STOPPED
                 os.remove(filepath)
                 print("File upload was stopped")
                 resp = jsonify({'message': 'File upload was stopped'})
                 resp.status_code = 201
                 return resp
-            UPLOAD_STATE = States.READY
+            UPLOAD_STATE[id] = States.READY
             print("File uploaded")
             resp = jsonify({'message': 'File uploaded'})
             resp.status_code = 201
@@ -82,57 +92,82 @@ class Upload(Resource):
             resp.status_code = 400
             return resp
 
-@api.route('/upload/status')
-class UploadStatus(Resource):
+@api.route('/upload/token')
+class UploadToken(Resource):
     def get(self):
         global UPLOAD_STATE
-        resp = jsonify({'status': (UPLOAD_STATE.value)})
+        id = uuid.uuid1()
+        UPLOAD_STATE[str(id.hex)] = States.READY
+        resp = jsonify({'token': str(id.hex)})
+        resp.status_code = 200
+        return resp
+
+@api.route('/upload/status/<string:token>')
+class UploadStatus(Resource):
+    def get(self,token):
+        global UPLOAD_STATE
+        resp = jsonify({'status': (UPLOAD_STATE[token].value)})
         resp.status_code = 201
         return resp
 
 @api.route('/upload/pause')
 class PauseUpload(Resource):
-    def get(self):
+    @api.expect(api.model('Token', {
+        "token": fields.String,
+    }))
+    def post(self):
         global UPLOAD_STATE
-        if UPLOAD_STATE != States.IN_PROGRESS:
-            print('Pause not required', UPLOAD_STATE)
+        req = request.json
+        id = req["token"]
+        if UPLOAD_STATE[id] != States.IN_PROGRESS:
+            print('Pause not required', UPLOAD_STATE[id].value)
             resp = jsonify({'message': 'Pause not required'})
             resp.status_code = 201
             return resp
         upload_thread.clear()
-        UPLOAD_STATE = States.PAUSED
-        print(UPLOAD_STATE)
+        UPLOAD_STATE[id] = States.PAUSED
+        print(UPLOAD_STATE[id])
         resp = jsonify({'message': 'File upload paused'})
         resp.status_code = 201
         return resp
 
 @api.route('/upload/resume')
 class ResumeUpload(Resource):
-    def get(self):
+    @api.expect(api.model('Token', {
+        "token": fields.String,
+    }))
+    def post(self):
         global UPLOAD_STATE
-        if UPLOAD_STATE != States.PAUSED:
-            print('Not required', UPLOAD_STATE)
+        req = request.json
+        id = req["token"]
+        if UPLOAD_STATE[id] != States.PAUSED:
+            print('Not required', UPLOAD_STATE[id].value)
             resp = jsonify({'message': 'Resume not required'})
             resp.status_code = 201
             return resp
         upload_thread.set()
-        UPLOAD_STATE = States.IN_PROGRESS
-        print(UPLOAD_STATE)
+        UPLOAD_STATE[id] = States.IN_PROGRESS
+        print(UPLOAD_STATE[id])
         resp = jsonify({'message': 'File upload resumed'})
         resp.status_code = 201
         return resp
 
 @api.route('/upload/stop')
 class StopUpload(Resource):
-    def get(self):
+    @api.expect(api.model('Token', {
+        "token": fields.String,
+    }))
+    def delete(self):
         global UPLOAD_STATE
-        if UPLOAD_STATE != States.IN_PROGRESS and UPLOAD_STATE != States.PAUSED:
-            print('Stop not required', UPLOAD_STATE)
+        req = request.json
+        id = req["token"]
+        if UPLOAD_STATE[id] != States.IN_PROGRESS and UPLOAD_STATE[id] != States.PAUSED:
+            print('Stop not required', UPLOAD_STATE[id].value)
             resp = jsonify({'message': 'Already Stopped'})
             resp.status_code = 201
             return resp
         upload_thread.set()
-        UPLOAD_STATE = States.STOPPED
+        UPLOAD_STATE[id] = States.STOPPED
         print('Stopping')
         resp = jsonify({'message':'Stopping'})
         resp.status_code = 201
@@ -142,7 +177,7 @@ class StopUpload(Resource):
 
 ############################ FOR EXPORT ###########################################
 
-EXPORT_STATE = States.READY
+EXPORT_STATE = {}
 
 export_thread = threading.Event()
 
@@ -150,13 +185,15 @@ export_thread = threading.Event()
 class Export(Resource):
     @api.expect(api.model('Query', {
         "rows": fields.Integer,
+        "token": fields.String
     }))
     def post(self):
         req = request.json
         row = int(req['rows'])
+        id = req["token"]
         lines = []
         global EXPORT_STATE
-        if EXPORT_STATE == States.IN_PROGRESS:
+        if EXPORT_STATE[id] == States.IN_PROGRESS:
             resp = jsonify({'message': 'Wait for export to complete'})
             resp.status_code = 400
             return resp
@@ -164,16 +201,18 @@ class Export(Resource):
         f = open(app.config["DATA_URL"], "r")
         export_thread.set()
         flag = 1
-        EXPORT_STATE = States.IN_PROGRESS
+        EXPORT_STATE[id] = States.IN_PROGRESS
         for line in csv.reader(f):
             if row > 0:
                 export_thread.wait
                 row -= 1
                 lines.append(line)
-                if(EXPORT_STATE == States.PAUSED):
-                    while(EXPORT_STATE !=  States.IN_PROGRESS):
-                            pass
-                if EXPORT_STATE == States.STOPPED:
+                if(EXPORT_STATE[id] == States.PAUSED):
+                    while(EXPORT_STATE[id] !=  States.IN_PROGRESS):
+                        if(EXPORT_STATE[id] == States.STOPPED):
+                            break
+                        pass
+                if EXPORT_STATE[id] == States.STOPPED:
                     flag = 0
                     break
                 #Artificial delay for demo
@@ -182,69 +221,94 @@ class Export(Resource):
                 break
         f.close()
         if flag == 0:
-            EXPORT_STATE = States.STOPPED
+            EXPORT_STATE[id] = States.STOPPED
             print("File upload was stopped")
             resp = jsonify({'message': 'File export was stopped'})
             resp.status_code = 201
             return resp
 
-        EXPORT_STATE = States.READY
+        EXPORT_STATE[id] = States.READY
         print("File uploaded")
         resp = jsonify({'message': lines})
         resp.status_code = 201
         return resp
 
-@api.route('/export/status')
-class ExportStatus(Resource):
+@api.route('/export/token')
+class UploadToken(Resource):
     def get(self):
         global EXPORT_STATE
-        resp = jsonify({'status': (EXPORT_STATE.value)})
+        id = uuid.uuid1()
+        EXPORT_STATE[str(id.hex)] = States.READY
+        resp = jsonify({'token': str(id.hex)})
+        resp.status_code = 200
+        return resp
+
+@api.route('/export/status/<string:token>')
+class ExportStatus(Resource):
+    def get(self,token):
+        global EXPORT_STATE
+        resp = jsonify({'status': (EXPORT_STATE[token].value)})
         resp.status_code = 201
         return resp
 
 @api.route('/export/pause')
 class PauseExport(Resource):
-    def get(self):
+    @api.expect(api.model('Token', {
+        "token": fields.String,
+    }))
+    def post(self):
         global EXPORT_STATE
-        if EXPORT_STATE != States.IN_PROGRESS:
-            print('Pause not required', EXPORT_STATE.vallue)
+        req = request.json
+        id = req["token"]
+        if EXPORT_STATE[id] != States.IN_PROGRESS:
+            print('Pause not required', EXPORT_STATE[id].vallue)
             resp = jsonify({'message': 'Pause not required'})
             resp.status_code = 201
             return resp
         export_thread.clear()
-        EXPORT_STATE = States.PAUSED
-        print(EXPORT_STATE.value)
+        EXPORT_STATE[id] = States.PAUSED
+        print(EXPORT_STATE[id].value)
         resp = jsonify({'message': 'File export paused'})
         resp.status_code = 201
         return resp
 
 @api.route('/export/resume')
 class ResumeExport(Resource):
-    def get(self):
+    @api.expect(api.model('Token', {
+        "token": fields.String,
+    }))
+    def post(self):
         global EXPORT_STATE
-        if EXPORT_STATE != States.PAUSED:
-            print('Not required', EXPORT_STATE.value)
+        req = request.json
+        id = req["token"]
+        if EXPORT_STATE[id] != States.PAUSED:
+            print('Not required', EXPORT_STATE[id].value)
             resp = jsonify({'message': 'Resume not required'})
             resp.status_code = 201
             return resp
         export_thread.set()
-        EXPORT_STATE = States.IN_PROGRESS
-        print(EXPORT_STATE.value)
+        EXPORT_STATE[id] = States.IN_PROGRESS
+        print(EXPORT_STATE[id].value)
         resp = jsonify({'message': 'File export resumed'})
         resp.status_code = 201
         return resp
 
 @api.route('/export/stop')
 class StopExport(Resource):
-    def get(self):
+    @api.expect(api.model('Token', {
+        "token": fields.String,
+    }))
+    def delete(self):
         global EXPORT_STATE
-        if EXPORT_STATE != States.IN_PROGRESS and EXPORT_STATE != States.PAUSED:
-            print('Stop not required', EXPORT_STATE.value)
+        req = request.json
+        id = req["token"]
+        if EXPORT_STATE[id] != States.IN_PROGRESS and EXPORT_STATE[id] != States.PAUSED:
+            print('Stop not required', EXPORT_STATE[id].value)
             resp = jsonify({'message': 'Already Stopped'})
             resp.status_code = 201
             return resp
         export_thread.set()
-        EXPORT_STATE = States.STOPPED
+        EXPORT_STATE[id] = States.STOPPED
         print('Stopping')
         resp = jsonify({'message':'Stopping'})
         resp.status_code = 201
