@@ -35,7 +35,7 @@ file_upload.add_argument("csv",
 file_upload.add_argument("token",
                         type=str,
                         required=True,
-                        help="Run a GET request to get a upload token")
+                        help="Run a GET request to get a upload ticket")
 
 
 upload_thread = threading.Event()
@@ -47,10 +47,6 @@ class Upload(Resource):
         args = file_upload.parse_args()
         global UPLOAD_STATE
         id = args["token"]
-        if (id in UPLOAD_STATE) == False:
-            resp = jsonify({'message': 'Invalid Token'})
-            resp.status_code = 400
-            return resp
         if UPLOAD_STATE[id] == States.IN_PROGRESS:
             resp = jsonify({'message': 'Wait for upload to complete'})
             resp.status_code = 400
@@ -74,6 +70,7 @@ class Upload(Resource):
                                 break
                             pass
                     if UPLOAD_STATE[id] == States.STOPPED:
+                        print("STOPPPPPPP")
                         flag = 0
                         break
                     print(line, sep='')
@@ -82,6 +79,7 @@ class Upload(Resource):
                 UPLOAD_STATE[id] = States.STOPPED
                 os.remove(filepath)
                 print("File upload was stopped")
+                del UPLOAD_STATE[id]
                 resp = jsonify({'message': 'File upload was stopped'})
                 resp.status_code = 201
                 return resp
@@ -109,10 +107,6 @@ class UploadToken(Resource):
 class UploadStatus(Resource):
     def get(self,token):
         global UPLOAD_STATE
-        if (id in UPLOAD_STATE) == False:
-            resp = jsonify({'message': 'Invalid Token'})
-            resp.status_code = 400
-            return resp
         resp = jsonify({'status': (UPLOAD_STATE[token].value)})
         resp.status_code = 201
         return resp
@@ -126,10 +120,6 @@ class PauseUpload(Resource):
         global UPLOAD_STATE
         req = request.json
         id = req["token"]
-        if (id in UPLOAD_STATE) == False:
-            resp = jsonify({'message': 'Invalid Token'})
-            resp.status_code = 400
-            return resp
         if UPLOAD_STATE[id] != States.IN_PROGRESS:
             print('Pause not required', UPLOAD_STATE[id].value)
             resp = jsonify({'message': 'Pause not required'})
@@ -151,10 +141,6 @@ class ResumeUpload(Resource):
         global UPLOAD_STATE
         req = request.json
         id = req["token"]
-        if (id in UPLOAD_STATE) == False:
-            resp = jsonify({'message': 'Invalid Token'})
-            resp.status_code = 400
-            return resp
         if UPLOAD_STATE[id] != States.PAUSED:
             print('Not required', UPLOAD_STATE[id].value)
             resp = jsonify({'message': 'Resume not required'})
@@ -176,10 +162,6 @@ class StopUpload(Resource):
         global UPLOAD_STATE
         req = request.json
         id = req["token"]
-        if (id in UPLOAD_STATE) == False:
-            resp = jsonify({'message': 'Invalid Token'})
-            resp.status_code = 400
-            return resp
         if UPLOAD_STATE[id] != States.IN_PROGRESS and UPLOAD_STATE[id] != States.PAUSED:
             print('Stop not required', UPLOAD_STATE[id].value)
             resp = jsonify({'message': 'Already Stopped'})
@@ -212,10 +194,6 @@ class Export(Resource):
         id = req["token"]
         lines = []
         global EXPORT_STATE
-        if (id in EXPORT_STATE) == False:
-            resp = jsonify({'message': 'Invalid Token'})
-            resp.status_code = 400
-            return resp
         if EXPORT_STATE[id] == States.IN_PROGRESS:
             resp = jsonify({'message': 'Wait for export to complete'})
             resp.status_code = 400
@@ -251,7 +229,7 @@ class Export(Resource):
             return resp
 
         EXPORT_STATE[id] = States.READY
-        print("Export ompleted")
+        print("Export completed")
         resp = jsonify({'message': lines})
         resp.status_code = 201
         return resp
@@ -270,10 +248,6 @@ class UploadToken(Resource):
 class ExportStatus(Resource):
     def get(self,token):
         global EXPORT_STATE
-        if (id in EXPORT_STATE) == False:
-            resp = jsonify({'message': 'Invalid Token'})
-            resp.status_code = 400
-            return resp
         resp = jsonify({'status': (EXPORT_STATE[token].value)})
         resp.status_code = 201
         return resp
@@ -287,10 +261,6 @@ class PauseExport(Resource):
         global EXPORT_STATE
         req = request.json
         id = req["token"]
-        if (id in EXPORT_STATE) == False:
-            resp = jsonify({'message': 'Invalid Token'})
-            resp.status_code = 400
-            return resp
         if EXPORT_STATE[id] != States.IN_PROGRESS:
             print('Pause not required', EXPORT_STATE[id].vallue)
             resp = jsonify({'message': 'Pause not required'})
@@ -312,10 +282,6 @@ class ResumeExport(Resource):
         global EXPORT_STATE
         req = request.json
         id = req["token"]
-        if (id in EXPORT_STATE) == False:
-            resp = jsonify({'message': 'Invalid Token'})
-            resp.status_code = 400
-            return resp
         if EXPORT_STATE[id] != States.PAUSED:
             print('Not required', EXPORT_STATE[id].value)
             resp = jsonify({'message': 'Resume not required'})
@@ -337,10 +303,6 @@ class StopExport(Resource):
         global EXPORT_STATE
         req = request.json
         id = req["token"]
-        if (id in EXPORT_STATE) == False:
-            resp = jsonify({'message': 'Invalid Token'})
-            resp.status_code = 400
-            return resp
         if EXPORT_STATE[id] != States.IN_PROGRESS and EXPORT_STATE[id] != States.PAUSED:
             print('Stop not required', EXPORT_STATE[id].value)
             resp = jsonify({'message': 'Already Stopped'})
