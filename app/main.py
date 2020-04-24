@@ -70,7 +70,6 @@ class Upload(Resource):
                                 break
                             pass
                     if UPLOAD_STATE[id] == States.STOPPED:
-                        print("STOPPPPPPP")
                         flag = 0
                         break
                     print(line, sep='')
