@@ -35,7 +35,7 @@ file_upload.add_argument("csv",
 file_upload.add_argument("token",
                         type=str,
                         required=True,
-                        help="Run a GET request to get a upload ticket")
+                        help="Run a GET request to get a upload token")
 
 
 upload_thread = threading.Event()
@@ -70,7 +70,6 @@ class Upload(Resource):
                                 break
                             pass
                     if UPLOAD_STATE[id] == States.STOPPED:
-                        print("STOPPPPPPP")
                         flag = 0
                         break
                     print(line, sep='')
@@ -228,7 +227,7 @@ class Export(Resource):
             return resp
 
         EXPORT_STATE[id] = States.READY
-        print("File uploaded")
+        print("Export ompleted")
         resp = jsonify({'message': lines})
         resp.status_code = 201
         return resp
